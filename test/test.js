@@ -6,7 +6,7 @@ _ = require('lodash'),
 z = require('z-schema'),
 request = require('request'),
 util = require('util'),
-spec = require('swagger-tools').specs.v2; // Using the latest Swagger 2.x specification
+spec = require('swagger-tools').specs.v2;
 
 
 var extensionSwaggerSchemaUrl = "https://raw.githubusercontent.com/Azure/autorest/master/schema/swagger-extensions.json";
