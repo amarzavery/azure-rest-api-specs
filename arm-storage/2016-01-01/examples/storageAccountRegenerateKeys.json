@@ -3,7 +3,7 @@
     "resourceGroupName":"resourcegroupname",
     "accountName": "accountname",
     "api-version": "2016-01-01",
-    "subscriptionID": "subcriptionID",
+    "subscriptionId": "subcriptionID",
     "body": {"keyName":"key1"}
   },
   "responses":{
