@@ -18,11 +18,14 @@
     }
   ],
   "dependencies": {
+    "async": "^2.1.2",
     "glob": "^5.0.14",
+    "json-schema-ref-parser": "^3.1.2",
     "lodash": "^3.10.1",
     "request": "^2.61.0",
     "swagger-tools": "^0.10.1",
-    "z-schema": "^3.16.1"
+    "z-schema": "^3.16.1",
+    "moment": "^2.14.1"
   },
   "devDependencies": {},
   "homepage": "https://github.com/azure/azure-rest-api-specs",
