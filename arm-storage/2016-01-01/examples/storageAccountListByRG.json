@@ -2,7 +2,7 @@
   "parameters":{
     "resourceGroupName":"resourcegroupname",
     "api-version": "2016-01-01",
-    "subscriptionID": "subcriptionID"
+    "subscriptionId": "subcriptionID"
   },
   "responses":{
     "200":{
