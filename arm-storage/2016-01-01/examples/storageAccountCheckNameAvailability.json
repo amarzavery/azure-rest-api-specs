@@ -1,7 +1,7 @@
 {
   "parameters":{
     "api-version": "2016-01-01",
-    "subscriptionID": "subcriptionID",
+    "subscriptionId": "subcriptionID",
     "body":{"name":"storage4db9202c66274d529","type":"Microsoft.Storage/storageAccounts"}
   },
   "responses":{
