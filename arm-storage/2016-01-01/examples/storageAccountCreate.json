@@ -4,7 +4,7 @@
     "accountName": "accountname",
     "api-version": "2016-01-01",
     "subscriptionId": "subcriptionID",
-    "body":{"sku":{"name":"Standard_LRS"},"kind":"Storage","location":"westus","properties":{}}
+    "parameters":{"sku":{"name":"Standard_LRS"},"kind":"Storage","location":"westus","properties":{}}
   },
   "responses":{
     "202": {

@@ -4,7 +4,7 @@
     "accountName": "accountname",
     "api-version": "2016-01-01",
     "subscriptionId": "subcriptionID",
-    "body": {"tags":{"tag1":"val1"}}
+    "parameters": {"tags":{"tag1":"val1"}}
   },
   "responses":{
     "200": {

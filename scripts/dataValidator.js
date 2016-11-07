@@ -16,19 +16,31 @@ var swaggers = glob.sync(globPath).filter(function(entry) {
     return entry;
   }
 });
+const xmsExamples = 'x-ms-examples';
+//parsed swagger spec in json format
+var specInJson = {},
+//output of the RefParser that helps us in getting objects using json pointer ("$ref")
+refSpecInJson = {},
+//the uber result object that provides the status of all the swagger specs that were processed by the dataValidator
+finalValidationResult = {},
+//the result object that stores the validationResult of a spec.
+specValidationResult = {};
 
-var specInJson = {}; var refSpecInJson = {};
-
+//list of constraints understood by swagger 2.0 specification
 var constraints = [ 'minLength', 'maxLength', 'minimum', 'maximum', 'enum', 
   'maxItems', 'minItems', 'uniqueItems', 'multipleOf', 'pattern'];
 
 //Entrypoint of the grunt work.
 swaggers.forEach(function(spec){
   //parse the spec into a JSON object
+  finalValidationResult[spec] = specValidationResult;
   try {
     specInJson = parseJSONSync(spec);
   } catch (err) {
-    throw new Error(util.format('Error occured while parsing the spec "%s" - \n %s.', spec, util.inspect(err, {depth: null})));
+    var msg = `Error occured while parsing the spec ${spec} - \n ${util.inspect(err, {depth: null})}.`;
+    specValidationResult.parsedJson = {};
+    finalValidationResult[spec].parsedJson.error = msg;
+    return;
   }
 
   //unify x-ms-paths into paths
@@ -40,31 +52,41 @@ swaggers.forEach(function(spec){
     }
     specInJson.paths = paths;
   }
-
+  specValidationResult.operations = {};
   //Resolve all the file references for scenarios in x-ms-examples. This needs to be done before the spec is provided as an input to 
   //swagger-tools' validateModel().
   for (var apiPath in specInJson.paths) {
     for (var verb in specInJson.paths[apiPath]) {
-      if (specInJson.paths[apiPath][verb]['x-ms-examples']) {
+      var operationId = specInJson.paths[apiPath][verb]['operationId'];
+      specValidationResult.operations[operationId] = {};
+      specValidationResult.operations[operationId][xmsExamples] = {};
+      if (specInJson.paths[apiPath][verb][xmsExamples]) {
         //populate all the scenarios for the examples inline.
-        for (var scenarioName in specInJson.paths[apiPath][verb]['x-ms-examples']) {
-          if (!specInJson.paths[apiPath][verb]['x-ms-examples'][scenarioName]["$ref"]) {
-            throw new Error(util.format('$ref not found in %s', specInJson.paths[apiPath][verb]['x-ms-examples'][scenarioName]));
+        specValidationResult.operations[operationId][xmsExamples]['scenarios'] = {};
+        for (var scenarioName in specInJson.paths[apiPath][verb][xmsExamples]) {
+          specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName] = {};
+          if (!specInJson.paths[apiPath][verb][xmsExamples][scenarioName]["$ref"]) {
+            var msg = `$ref not found in ${specInJson.paths[apiPath][verb][xmsExamples][scenarioName]}`;
+            specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName]['populateScenariosInline'] = {};
+            specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName]['populateScenariosInline']['REF_NOTFOUND_ERROR'] = msg;
+            continue;
           }
           //derefence the scenarioName
-          var scenarioPath = path.resolve(path.dirname(spec), specInJson.paths[apiPath][verb]['x-ms-examples'][scenarioName]["$ref"]);
+          var scenarioPath = path.resolve(path.dirname(spec), specInJson.paths[apiPath][verb][xmsExamples][scenarioName]["$ref"]);
           var scenarioData;
           try {
             scenarioData = parseJSONSync(scenarioPath);
           } catch (parsingError) {
-            throw new Error(util.format('Error occured while parsing example data from "%s" - \n%s.', 
-                scenarioPath, util.inspect(parsingError, {depth: null})));
+            var msg = `Error occured while parsing example data from "${scenarioPath}" - \n${util.inspect(parsingError, {depth: null})}.`;
+            specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName]['populateScenariosInline']['JSON_PARSING_ERROR'] = msg;
+            continue;
           }
           //assign the parsed example data to the scenarioName in the spec, so everything is inline.
-          specInJson.paths[apiPath][verb]['x-ms-examples'][scenarioName] = scenarioData;
+          specInJson.paths[apiPath][verb][xmsExamples][scenarioName] = scenarioData;
         }
       } else {
-        console.warn(util.format('Operation - "%s", does not contain the extension: "x-ms-examples".', specInJson.paths[apiPath][verb].operationId));
+        var msg = `Operation - "${specInJson.paths[apiPath][verb].operationId}", does not contain the extension: "x-ms-examples".'`;
+        specValidationResult.operations[operationId][xmsExamples]['EXAMPLE_NOTFOUND_ERROR']= msg;
       }
     }
   }
@@ -76,8 +98,10 @@ swaggers.forEach(function(spec){
       RefParser.resolve(specInJson, function(err, result) {
         process.chdir(cwd);
         if (err) {
-          return callback(new Error(util.format('Error occurred in resolving the spec "%s". Details of the error are:\n%s.', 
-            spec, util.format(err, {depth: null}))));
+          var msg = `Error occurred in resolving the spec "${spec}". Details of the error are:\n${util.format(err, {depth: null})}.`;
+          sspecValidationResult.resolveSpec = {};
+          specValidationResult.resolveSpec['RESOLVE_SPEC_ERROR'] = msg;
+          return callback(new Error(msg));
         }
         refSpecInJson = result;
         return callback(null, refSpecInJson);
@@ -85,17 +109,24 @@ swaggers.forEach(function(spec){
     },
     //Validate every scenario provided in every x-ms-examples extension for every operation.
     function(callback) {
-      for (var apiPath in specInJson.paths) {
-        for (var verb in specInJson.paths[apiPath]) {
-          if (specInJson.paths[apiPath][verb]['x-ms-examples']) {
-            for (var scenarioName in specInJson.paths[apiPath][verb]['x-ms-examples']) {
-              validateScenario(apiPath, verb, scenarioName, function(err, result) {
+      var apiPaths = Object.keys(specInJson.paths);
+      for (var i = 0; i < apiPaths.length; i++) {
+        var verbs = Object.keys(specInJson.paths[apiPaths[i]]);
+        for (var j = 0; j < verbs.length; j++) {
+          if (specInJson.paths[apiPaths[i]][verbs[j]][xmsExamples]) {
+            var scenarios = Object.keys(specInJson.paths[apiPaths[i]][verbs[j]][xmsExamples]);
+            for (var k = 0; k < scenarios.length; k++) {
+              validateScenario(apiPaths[i], verbs[j], scenarios[k], function(err, result) {
                 if (err) {
-                  return callback(new Error(util.format('An error "%s", \n occurred in validating the scenarioName "%s" for operation "%s".',
-                    util.inspect(err, {depth: null}), scenarioName, specInJson.paths[apiPath][verb].operationId)));
+                  var msg = `An error occurred in validating the scenarioName "${scenarios[k]}" ` +
+                  `for operation "${specInJson.paths[apiPaths[i]][verbs[j]].operationId}".\n ${util.inspect(err, {depth: null})}`;
+                  return callback(new Error(msg));
                 }
                 if (result) {
                   console.log(result);
+                }
+                if (k === scenarios.length-1 && i === apiPaths.length-1) {
+                  return callback(null, result);
                 }
               });
             }
@@ -104,8 +135,10 @@ swaggers.forEach(function(spec){
       }
     }
   ], function (err, result) {
+    console.log('finalValidationResult>>>>>>>>>');
+    console.dir(finalValidationResult, {depth: null, colors: true});
     if (err) { console.log(err); return;}
-    console.log(result); return;
+    return;
   });
 });
 
@@ -230,7 +263,6 @@ function validateBasicTypes(schema, value) {
   }
 }
 
-
 function isValidUuid(uuid) {
   var validUuidRegex = new RegExp('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', 'ig');
   return validUuidRegex.test(uuid);
@@ -300,29 +332,6 @@ function parseJSONSync(swaggerSpecPath) {
   return JSON.parse(stripBOM(fs.readFileSync(swaggerSpecPath, 'utf8')));
 }
 
-//wrapper to validateModel of swagger-tools
-function validateModel(modelReference, data, callback) {
-  if (!modelReference) {
-    return callback(new Error('modelReference cannot be null or undefined. It must be of a string. Example: "#/definitions/foo".'))
-  }
-  if (!data) {
-    return callback(new Error('data cannot be null or undefined. It must be of a JSON object or a JSON array.'))
-  }
-  if (!callback) {
-    throw new Error('callback cannot be null or undefined. It must be of a function. Example: function() {}');
-  }
-  spec.validateModel(specInJson, modelReference, data, function (err, result) {
-    if (err) {
-      return callback(err);
-    }
-    if (result) {
-      return callback(null, result);
-    } else {
-      return callback(null, null);
-    }
-  });
-}
-
 function validateNonBodyParameter(schema, data, operationId, scenarioName) {
   var result = {
     validationError: null,
@@ -331,13 +340,13 @@ function validateNonBodyParameter(schema, data, operationId, scenarioName) {
   try {
     validateConstraints(schema, data, schema.name);
   } catch (validationError) {
-    result.validationError = validationError.message + ' in operation: \'' + operationId + '\'.';
+    result.validationError = `${validationError.message} in operation: "${operationId}".`;
   }
   //type validation
   try {
     validateType(schema, data);
   } catch (typeError) {
-    result.typeError = typeError.message + ' in operation: \'' + operationId + '\'.';
+    result.typeError = `${typeError.message} in operation: "${operationId}".`;
   }
   return result; 
 }
@@ -345,46 +354,63 @@ function validateNonBodyParameter(schema, data, operationId, scenarioName) {
 //validates different aspects of a given scenario.
 function validateScenario(apiPath, verb, scenarioName, callback) {
   var operation = specInJson.paths[apiPath][verb];
-  var scenarioData = operation['x-ms-examples'][scenarioName];
+  var operationId = operation.operationId;
+  var scenarioData = operation[xmsExamples][scenarioName];
   var validationResult = [];
   //validate parameters
-  async.forEach(operation.parameters, function (parameter, callback) {
+  specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].parameters = {};
+  async.forEachSeries(operation.parameters, function (parameter, callback) {
     var dereferencedParameter = parameter;
     if (parameter['$ref']) {
       dereferencedParameter = refSpecInJson.get(parameter['$ref']);
     }
+    var parameterName = dereferencedParameter.name;
+    specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].parameters[parameterName] = {};
+    specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].parameters[parameterName]['isValid'] = true;
     //check for requiredness
-    if (dereferencedParameter.in !== 'body' && dereferencedParameter.required && !scenarioData.parameters[dereferencedParameter.name]) {
-      console.error(util.format('Swagger spec has a parameter named "%s" as required for operation "%s", ' + 
-        'however this parameter is not defined in the example for scenario "%s".', dereferencedParameter.name,
-        operation.operationId, scenarioName));
+    if (dereferencedParameter.required && !scenarioData.parameters[parameterName]) {
+      var msg = `Swagger spec has a parameter named "${dereferencedParameter.name}" as required for operation "${operationId}", ` + 
+        `however this parameter is not defined in the example for scenario "${scenarioName}".`;
+      specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].parameters[parameterName]['isValid'] = false;
+      specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].parameters[parameterName]['REQUIRED_PARAMETER_NOT_IN_EXAMPLE_ERROR'] = msg;
+      console.error(msg);
+      return;
     }
     if (dereferencedParameter.in === 'body') {
       var modelReference = dereferencedParameter.schema['$ref'];
-      validateModel(modelReference, scenarioData.parameters.body, function(err, result) {
+      spec.validateModel(specInJson, modelReference, scenarioData.parameters[parameterName], function(err, result) {
         if (err) {
+          specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].parameters[parameterName]['isValid'] = false;
+          specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].parameters[parameterName]['INTERNAL_ERROR'] = util.inspect(err, {depth: null});
           return callback(err);
         }
         if (result) {
-          console.log(util.format('Found errors in validating the body parameter for example "%s" in operation "%s".',
-            scenarioName, operation.operationId));
-          console.log(util.inspect(result, {depth: null}));
+          specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].parameters[parameterName]['isValid'] = false;
+          var msg = `Found errors in validating the body parameter for example "${scenarioName}" in operation "${operationId}".\n
+          ${util.inspect(result, {depth: null})}`;
+          specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].parameters[parameterName]['BODY_PARAMETER_VALIDATION_ERROR'] = msg;
+          console.log(msg);
         } else {
-          console.log(util.format('The body parameter for example "%s" in operation "%s" is valid.',
-            scenarioName, operation.operationId));
+          var msg = `The body parameter for example "${scenarioName}" in operation "${operationId}" is valid.`;
+          specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].parameters[parameterName]['result'] = msg;
+          console.log(msg);
         }
-        return callback(result);
+        return callback(null);
       });
     } else {
-      var errors = validateNonBodyParameter(dereferencedParameter, scenarioData.parameters[dereferencedParameter.name], 
-        operation.operationId, scenarioName);
+      var errors = validateNonBodyParameter(dereferencedParameter, scenarioData.parameters[parameterName], operationId, scenarioName);
       if (errors.validationError) {
+        specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].parameters[parameterName]['isValid'] = false;
+        specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].parameters[parameterName]['CONSTRAINT_VALIDATION_ERROR'] = errors.validationError;
         console.log(errors.validationError);
       }
       if (errors.typeError) {
+        specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].parameters[parameterName]['isValid'] = false;
+        specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].parameters[parameterName]['TYPE_VALIDATION_ERROR'] = errors.typeError;
         console.log(errors.typeError);
       }
       validationResult.push(errors);
+      return callback(null);
     }
   }, function(err) {
     if (err) {
@@ -393,29 +419,45 @@ function validateScenario(apiPath, verb, scenarioName, callback) {
   });
 
   //validate responses
-  async.forEach(Object.keys(operation.responses), function(statusCode, callback) {
+  specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].responses = {};
+  async.forEachSeries(Object.keys(operation.responses), function(statusCode, callback) {
+    specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].responses[statusCode] = {};
+    specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].responses[statusCode]['isValid'] = true;
     if (!scenarioData.responses[statusCode]) {
-      return callback(new Error(util.format('Response with statusCode "%s" for operation "%s" is present in the spec, but not in the example "%s".',
-        statusCode, operation.operationId, scenarioName)));
+      var msg = `Response with statusCode "${statusCode}" for operation "${operationId}" is present in the spec, but not in the example "${scenarioName}".`;
+      specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].responses[statusCode]['isValid'] = false;
+      specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].responses[statusCode]['STATUS_CODE_NOT_IN_EXAMPLE_ERROR'] = msg;
+      return callback(new Error(msg));
     }
+    //Currently only validating $ref in responses. What if it is an inline schema? Will have to add the logic to 
+    //add the schema in the definitions section and replace the inline schema with a ref corresponding to that definition.
     if (operation.responses[statusCode]['schema'] && operation.responses[statusCode]['schema']['$ref']) {
       var modelReference = operation.responses[statusCode]['schema']['$ref'];
-      validateModel(modelReference, scenarioData.responses[statusCode].body, function(err, result) {
-        if (err) { return callback(err); }
-        if (result) {
-          console.log(util.format('Found errors in validating the response with statusCode "%s" for example "%s" in operation "%s".',
-            statusCode, scenarioName, operation.operationId));
-          console.log(util.inspect(result, {depth: null}));
-        } else {
-          console.log(util.format('Response with statusCode "%s" for example "%s" in operation "%s" is valid.', 
-            statusCode, scenarioName, operation.operationId));
+      spec.validateModel(specInJson, modelReference, scenarioData.responses[statusCode].body, function(err, result) {
+        if (err) {
+          specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].responses[statusCode]['isValid'] = false;
+          specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].responses[statusCode]['INTERNAL_ERROR'] = util.inspect(err, {depth: null});
+          return callback(err); 
         }
+        if (result) {
+          var msg = `Found errors in validating the response with statusCode "${statusCode}" for ` + 
+          `example "${scenarioName}" in operation "${operationId}".\n${util.inspect(result, {depth: null})}.`;
+          specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].responses[statusCode]['isValid'] = false;
+          specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].responses[statusCode]['RESPONSE_BODY_VALIDATION_ERROR'] = msg;
+          console.log(msg);
+        } else {
+          var msg = `Response with statusCode "${statusCode}" for example "${scenarioName}" in operation "${operationId}" is valid.`
+          specValidationResult.operations[operationId][xmsExamples]['scenarios'][scenarioName].responses[statusCode]['result'] = msg;
+          console.log(msg);
+        }
+        return callback(null);
       });
     }
   }, function(err) {
     if (err) {
       return callback(err);
     }
+    return callback(null);
   });
 }
 

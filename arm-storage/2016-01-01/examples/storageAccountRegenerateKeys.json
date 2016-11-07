@@ -4,7 +4,7 @@
     "accountName": "accountname",
     "api-version": "2016-01-01",
     "subscriptionId": "subcriptionID",
-    "body": {"keyName":"key1"}
+    "regenerateKey": {"keyName":"key1"}
   },
   "responses":{
     "200": {
