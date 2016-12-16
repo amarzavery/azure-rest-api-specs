@@ -1,0 +1,13 @@
+{
+  "info": {
+    "title": "NetworkManagementClient",
+    "description": "Composite Swagger for Network Client"
+  },
+  "documents": [
+    "./2016-09-01/swagger/applicationGateway.json",
+    "./2016-09-01/swagger/network.json",
+    "./2016-09-01/swagger/virtualNetwork.json",
+    "./2016-09-01/swagger/networkInterface.json",
+    "./2016-09-01/swagger/vmssNetworkInterface.json"
+  ]
+}
