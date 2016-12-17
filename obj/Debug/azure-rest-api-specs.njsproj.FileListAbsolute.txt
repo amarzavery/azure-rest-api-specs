@@ -1,0 +1,2 @@
+D:\sdk\upstream\azure-rest-api-specs\obj\Debug\azure-rest-api-specs.njsprojResolveAssemblyReference.cache
+D:\sdk\upstream\azure-rest-api-specs\bin\Microsoft.NodejsTools.WebRole.dll
