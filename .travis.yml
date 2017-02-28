@@ -9,13 +9,13 @@ os:
 env:
   matrix:
   - MODE=syntax
-  - MODE=python
-  - MODE=node
-  - MODE=ruby
-  - MODE=linter PR_ONLY=false
+  - MODE=python TRAVIS_OS_NAME=linux
+  - MODE=node TRAVIS_OS_NAME=linux
+  - MODE=ruby TRAVIS_OS_NAME=linux
+  - MODE=linter PR_ONLY=false TRAVIS_OS_NAME=osx
   - MODE=semantic PR_ONLY=false
   - MODE=model PR_ONLY=false
-  - MODE=linter PR_ONLY=true
+  - MODE=linter PR_ONLY=true TRAVIS_OS_NAME=osx
   - MODE=semantic PR_ONLY=true
   - MODE=model PR_ONLY=true
   global:
@@ -23,10 +23,10 @@ env:
 matrix:
   fast_finish: true
   allow_failures:
-    - env: MODE=linter PR_ONLY=false
+    - env: MODE=linter PR_ONLY=false TRAVIS_OS_NAME=osx
     - env: MODE=semantic PR_ONLY=false
     - env: MODE=model PR_ONLY=false
-    - env: MODE=linter PR_ONLY=true
+    - env: MODE=linter PR_ONLY=true TRAVIS_OS_NAME=osx
     - env: MODE=semantic PR_ONLY=true
     - env: MODE=model PR_ONLY=true
 before_install:
