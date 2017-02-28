@@ -92,7 +92,7 @@ function runLinter(swagger) {
   try {
     resultString = execSync(cmd, { encoding: 'utf8' });
   } catch (err) {
-    if (err.stdout && !err.stderr) {
+    if (err && err.stdout && !err.stderr) {
       resultString = err.stdout;
     } else {
       console.log(`An error occurred while running the linter on ${swagger}:`);
